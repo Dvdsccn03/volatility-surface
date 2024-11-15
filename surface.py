@@ -14,7 +14,15 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.title("Volatility Surface")
+col_i, col_t = st.columns([3,1])
+with col_i: st.header('Volatility Surface')
+with col_t: st.markdown("""Created by 
+    <a href="https://www.linkedin.com/in/davide-saccone/" target="_blank">
+        <button style="background-color: #262730; color: white; border: none; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; margin: 4px 2px; cursor: pointer;">
+            Davide Saccone
+        </button>
+    </a>
+    """, unsafe_allow_html=True)
 
 st.write(
     """
@@ -51,6 +59,7 @@ except Exception as e:
 option_type = st.sidebar.selectbox("Option Type", ["Calls", "Puts", "Both"])
 r = st.sidebar.number_input("Risk-Free Interest Rate (r)", value=0.02, min_value=0.0, step=0.01)
 exp_date_limit = st.sidebar.number_input("Number of Expiration Dates to Plot", min_value=1, max_value=len(expiration_dates), value=5, step=1)
+
 
 
 
@@ -101,6 +110,7 @@ def impliedVol_put(p, S, K, T, r, q=0, max_iter=200, tol=1e-4):
 
 
 
+
 # Collect data for the scatter plot
 time_to_expiry, strike_prices, implied_volatilities, option_types, market_prices = [], [], [], [], []
 
@@ -108,6 +118,7 @@ time_to_expiry, strike_prices, implied_volatilities, option_types, market_prices
 def process_option_data(row, S0, T, r, opt_type):
     K = row['strike']
     bid, ask = row['bid'], row['ask']
+
     if bid > 0 and ask > 0:
         market_price = (bid + ask) / 2
     elif row['lastPrice'] > 0:
@@ -161,23 +172,58 @@ for expiration_date in expiration_dates[:exp_date_limit]:
 
 
 
-st.write("Number of points:", len(implied_volatilities))
 
-# Plot only if data is available
-if len(implied_volatilities) > 0:
+# Add term selection to filter data
+unique_terms = sorted(set(time_to_expiry))
+unique_terms_with_no_filter = ["No Filtering"] + unique_terms
+
+selected_term = st.sidebar.selectbox(
+    "Term Filter",
+    options=unique_terms_with_no_filter,
+    index=0,
+    help="Select the term (in days to expiry) to filter the IV surface"
+)
+
+# Filter data based on the selected term
+if selected_term == "No Filtering":
+    filtered_strike_prices = strike_prices
+    filtered_implied_volatilities = implied_volatilities
+    filtered_option_types = option_types
+    filtered_market_prices = market_prices
+    filtered_time_to_expiry = time_to_expiry
+else:
+    filtered_strike_prices = [strike for strike, expiry in zip(strike_prices, time_to_expiry) if expiry == selected_term]
+    filtered_implied_volatilities = [iv for iv, expiry in zip(implied_volatilities, time_to_expiry) if expiry == selected_term]
+    filtered_option_types = [opt for opt, expiry in zip(option_types, time_to_expiry) if expiry == selected_term]
+    filtered_market_prices = [mp for mp, expiry in zip(market_prices, time_to_expiry) if expiry == selected_term]
+    filtered_time_to_expiry = [expiry for expiry in time_to_expiry if expiry == selected_term]
+
+
+
+# Output number of points for selected term
+if selected_term == "No Filtering":
+    st.write("Number of points:", len(implied_volatilities))
+else:
+    st.write("Number of points for selected term:", len(filtered_implied_volatilities))
+
+
+
+
+# Plot the 3D scatter plot if there is data
+if len(filtered_implied_volatilities) > 0:
 
     fig = go.Figure()
 
-    if "Call" in option_types:
+    if "Call" in filtered_option_types:
         fig.add_trace(go.Scatter3d(
-            x=[strike for strike, opt in zip(strike_prices, option_types) if opt == "Call"],
-            y=[expiry for expiry, opt in zip(time_to_expiry, option_types) if opt == "Call"],
-            z=[iv for iv, opt in zip(implied_volatilities, option_types) if opt == "Call"],
-            customdata=[mp for mp, opt in zip(market_prices, option_types) if opt == "Call"],
+            x=[strike for strike, opt in zip(filtered_strike_prices, filtered_option_types) if opt == "Call"],
+            y=[expiry for expiry, opt in zip(filtered_time_to_expiry, filtered_option_types) if opt == "Call"],
+            z=[iv for iv, opt in zip(filtered_implied_volatilities, filtered_option_types) if opt == "Call"],
+            customdata=[mp for mp, opt in zip(filtered_market_prices, filtered_option_types) if opt == "Call"],
             mode='markers',
             marker=dict(
                 size=5,
-                color=[iv for iv, opt in zip(implied_volatilities, option_types) if opt == "Call"],
+                color=[iv for iv, opt in zip(filtered_implied_volatilities, filtered_option_types) if opt == "Call"],
                 colorscale='Viridis',
                 colorbar=dict(title="IV Calls", x=1.2),
                 opacity=0.8),
@@ -185,25 +231,26 @@ if len(implied_volatilities) > 0:
             name='Call',
         ))
 
-    if "Put" in option_types:
+    if "Put" in filtered_option_types:
         fig.add_trace(go.Scatter3d(
-            x=[strike for strike, opt in zip(strike_prices, option_types) if opt == "Put"],
-            y=[expiry for expiry, opt in zip(time_to_expiry, option_types) if opt == "Put"],
-            z=[iv for iv, opt in zip(implied_volatilities, option_types) if opt == "Put"],
-            customdata=[mp for mp, opt in zip(market_prices, option_types) if opt == "Put"],
+            x=[strike for strike, opt in zip(filtered_strike_prices, filtered_option_types) if opt == "Put"],
+            y=[expiry for expiry, opt in zip(filtered_time_to_expiry, filtered_option_types) if opt == "Put"],
+            z=[iv for iv, opt in zip(filtered_implied_volatilities, filtered_option_types) if opt == "Put"],
+            customdata=[mp for mp, opt in zip(filtered_market_prices, filtered_option_types) if opt == "Put"],
             mode='markers',
             marker=dict(
                 size=5,
-                color=[iv for iv, opt in zip(implied_volatilities, option_types) if opt == "Put"],
+                color=[iv for iv, opt in zip(filtered_implied_volatilities, filtered_option_types) if opt == "Put"],
                 colorscale='Plasma',
                 colorbar=dict(title="IV Puts", x=-0.2),
                 opacity=0.8),
-                hovertemplate=("Strike Price: %{x}<br>Days to Expiry: %{y}<br>IV: %{z:.4f}<br>Market Price: %{customdata:.2f}"),
+            hovertemplate=("Strike Price: %{x}<br>Days to Expiry: %{y}<br>IV: %{z:.4f}<br>Market Price: %{customdata:.2f}"),
             name='Put'
         ))
 
     fig.update_layout(
-        title=f"Implied Volatility Scatter Plot for {ticker}",
+        title=f"Implied Volatility Scatter Plot for {ticker}" +
+              (f" (Term: {selected_term} Days to Expiry)" if selected_term != "No Filtering" else ""),
         scene=dict(
             xaxis=dict(title="Strike Price (K)"),
             yaxis=dict(title="Days to Expiry (T)", autorange='reversed'),
@@ -215,5 +262,7 @@ if len(implied_volatilities) > 0:
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
 else:
-    st.write("No valid implied volatility data to display.")    
+    st.write(f"No valid implied volatility data to display" +
+             (f" for the selected term ({selected_term} days)." if selected_term != "No Filtering" else "."))
